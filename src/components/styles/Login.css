@@ -15,6 +15,9 @@
   padding: 2rem;
   width: 100%;
   max-width: 400px;
+  /* keep card from growing larger than viewport */
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .login-header {
