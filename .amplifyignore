@@ -1,0 +1,13 @@
+# Amplify build artifacts
+amplify/#current-cloud-backend
+amplify/.config/local-*
+# node
+node_modules
+# production
+build
+dist
+
+# misc
+*.log
+npm-debug.log*
+.env
