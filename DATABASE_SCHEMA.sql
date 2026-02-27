@@ -173,12 +173,13 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   status VARCHAR(50),
   
   -- Timestamps
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  
-  INDEX idx_activity_user_id (user_id),
-  INDEX idx_activity_created_at (created_at),
-  INDEX idx_activity_action (action)
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Post-table indexes for PostgreSQL
+CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_created_at ON activity_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_logs(action);
 
 -- ============================================
 -- 📋 LOGIN HISTORY
