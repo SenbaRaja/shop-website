@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import '../components/styles/Login.css';
 
-interface LoginPageProps {
+interface AdminLoginPageProps {
   onLoginSuccess?: () => void;
-  onSwitchToAdminLogin?: () => void;
+  onSwitchToUserLogin?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchToAdminLogin }) => {
+export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, onSwitchToUserLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -37,9 +37,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
     <div className="login-container">
       <div className="login-card">
         <div className="login-header">
-          <div className="logo">📊</div>
-          <h1>StockMate Pro</h1>
-          <p>Shop Stock Management System</p>
+          <div className="logo">🔐</div>
+          <h1>Admin Portal</h1>
+          <p>StockMate Pro - Administration</p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -50,7 +50,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Enter admin username"
             />
           </div>
 
@@ -62,7 +62,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Enter admin password"
               />
               <button
                 type="button"
@@ -77,19 +77,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" className="login-button">
-            Login
+            Admin Login
           </button>
         </form>
 
         <div className="login-footer">
           <p className="login-footer-text">
-            Admin?{' '}
+            Not an admin?{' '}
             <button
               type="button"
               className="switch-login-button"
-              onClick={onSwitchToAdminLogin}
+              onClick={onSwitchToUserLogin}
             >
-              Admin Portal
+              User Login
             </button>
           </p>
         </div>
