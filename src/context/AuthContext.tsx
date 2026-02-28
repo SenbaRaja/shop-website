@@ -1,52 +1,113 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthContextType, User } from '../types';
+import * as cognitoAuth from '../services/cognitoAuthService';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Default admin and staff users
-const DEFAULT_USERS: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    password: 'Admin@123', // In production, use proper authentication
-    role: 'admin',
-    createdAt: new Date(),
-  },
-  {
-    id: '2',
-    username: 'staff',
-    password: 'Staff@123',
-    role: 'staff',
-    createdAt: new Date(),
-  },
-];
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Check if user is already authenticated on mount
   useEffect(() => {
-    // Check if user is stored in localStorage
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
+    const checkAuthStatus = async () => {
+      try {
+        const authenticatedUser = await cognitoAuth.getCurrentUser();
+        if (authenticatedUser) {
+          // Extract user information from Cognito response
+          const userAttributes = await cognitoAuth.getUserAttributes();
+          const groups = await cognitoAuth.getUserGroups();
+          
+          // Determine role from Cognito groups or custom attributes
+          const role = determineRole(groups, userAttributes);
+          
+          const mappedUser: User = {
+            id: authenticatedUser.username,
+            username: authenticatedUser.username,
+            email: userAttributes?.find((attr: any) => attr.Name === 'email')?.Value,
+            role: role as 'admin' | 'staff',
+            createdAt: new Date(authenticatedUser.userCreateDate),
+            attributes: userAttributes,
+          };
+          
+          setUser(mappedUser);
+          localStorage.setItem('currentUser', JSON.stringify(mappedUser));
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+        localStorage.removeItem('currentUser');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuthStatus();
   }, []);
 
-  const login = (username: string, password: string): boolean => {
-    const foundUser = DEFAULT_USERS.find((u) => u.username === username && u.password === password);
-    if (foundUser) {
-      const userToStore = { ...foundUser };
-      delete userToStore.password; // Don't store password
-      setUser(userToStore);
-      localStorage.setItem('currentUser', JSON.stringify(userToStore));
-      return true;
+  /**
+   * Determine user role from Cognito groups or custom attributes
+   * Expects 'role' attribute in Cognito user attributes or group membership
+   */
+  const determineRole = (groups: string[], attributes: any[]): string => {
+    // Check Cognito groups first
+    if (groups && groups.includes('admin')) {
+      return 'admin';
     }
-    return false;
+    if (groups && groups.includes('staff')) {
+      return 'staff';
+    }
+
+    // Fallback to custom attribute if available
+    const roleAttribute = attributes?.find((attr: any) => attr.Name === 'custom:role');
+    if (roleAttribute?.Value) {
+      return roleAttribute.Value;
+    }
+
+    // Default to staff role
+    return 'staff';
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const authenticatedUser = await cognitoAuth.signIn(username, password);
+      
+      // Get user attributes
+      const userAttributes = await cognitoAuth.getUserAttributes();
+      const groups = await cognitoAuth.getUserGroups();
+      const role = determineRole(groups, userAttributes);
+
+      const mappedUser: User = {
+        id: authenticatedUser.username,
+        username: authenticatedUser.username,
+        email: userAttributes?.find((attr: any) => attr.Name === 'email')?.Value,
+        role: role as 'admin' | 'staff',
+        createdAt: new Date(authenticatedUser.userCreateDate),
+        attributes: userAttributes,
+      };
+
+      setUser(mappedUser);
+      localStorage.setItem('currentUser', JSON.stringify(mappedUser));
+      return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async (): Promise<void> => {
+    try {
+      await cognitoAuth.signOut();
+      setUser(null);
+      localStorage.removeItem('currentUser');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Clear local state even if Cognito sign out fails
+      setUser(null);
+      localStorage.removeItem('currentUser');
+    }
   };
 
   const hasPermission = (role: string): boolean => {
@@ -62,6 +123,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     hasPermission,
   };
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <p>Loading authentication...</p>
+      </div>
+    );
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

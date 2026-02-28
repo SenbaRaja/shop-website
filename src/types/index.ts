@@ -2,9 +2,10 @@
 export interface User {
   id: string;
   username: string;
-  password?: string;
+  email?: string;
   role: 'admin' | 'staff';
   createdAt: Date;
+  attributes?: Record<string, any>; // AWS Cognito user attributes
 }
 
 // Product types

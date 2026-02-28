@@ -12,9 +12,10 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const { login, user } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -23,13 +24,30 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
       return;
     }
 
-    if (login(username, password)) {
-      setUsername('');
+    try {
+      setIsLoading(true);
+      const success = await login(username, password);
+      
+      if (success) {
+        // Check if user is actually an admin
+        if (user?.role !== 'admin') {
+          setError('Admin credentials required. You do not have admin access.');
+          setPassword('');
+          return;
+        }
+        setUsername('');
+        setPassword('');
+        onLoginSuccess?.();
+      } else {
+        setError('Invalid username or password');
+        setPassword('');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Login failed. Please try again.');
       setPassword('');
-      onLoginSuccess?.();
-    } else {
-      setError('Invalid username or password');
-      setPassword('');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -51,6 +69,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter admin username"
+              disabled={isLoading}
             />
           </div>
 
@@ -63,11 +82,13 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
+                disabled={isLoading}
               />
               <button
                 type="button"
                 className="password-toggle"
                 onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
               >
                 {showPassword ? '👁️' : '👁️‍🗨️'}
               </button>
@@ -76,8 +97,8 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
 
           {error && <div className="error-message">{error}</div>}
 
-          <button type="submit" className="login-button">
-            Admin Login
+          <button type="submit" className="login-button" disabled={isLoading}>
+            {isLoading ? 'Logging in...' : 'Admin Login'}
           </button>
         </form>
 
@@ -88,6 +109,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
               type="button"
               className="switch-login-button"
               onClick={onSwitchToUserLogin}
+              disabled={isLoading}
             >
               User Login
             </button>

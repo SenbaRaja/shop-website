@@ -12,9 +12,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -23,13 +24,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
       return;
     }
 
-    if (login(username, password)) {
-      setUsername('');
+    try {
+      setIsLoading(true);
+      const success = await login(username, password);
+      if (success) {
+        setUsername('');
+        setPassword('');
+        onLoginSuccess?.();
+      } else {
+        setError('Invalid username or password');
+        setPassword('');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Login failed. Please try again.');
       setPassword('');
-      onLoginSuccess?.();
-    } else {
-      setError('Invalid username or password');
-      setPassword('');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -51,6 +62,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
+              disabled={isLoading}
             />
           </div>
 
@@ -63,11 +75,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
+                disabled={isLoading}
               />
               <button
                 type="button"
                 className="password-toggle"
                 onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
               >
                 {showPassword ? '👁️' : '👁️‍🗨️'}
               </button>
@@ -76,8 +90,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
 
           {error && <div className="error-message">{error}</div>}
 
-          <button type="submit" className="login-button">
-            Login
+          <button type="submit" className="login-button" disabled={isLoading}>
+            {isLoading ? 'Logging in...' : 'Login'}
           </button>
         </form>
 
@@ -88,6 +102,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
               type="button"
               className="switch-login-button"
               onClick={onSwitchToAdminLogin}
+              disabled={isLoading}
             >
               Admin Portal
             </button>

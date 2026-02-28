@@ -17,7 +17,10 @@
     "html2canvas": "^1.4.1",
     "chart.js": "^4.4.0",
     "react-chartjs-2": "^5.2.0",
-    "date-fns": "^2.30.0"
+    "date-fns": "^2.30.0",
+    "aws-amplify": "^6.0.0",
+    "@aws-amplify/auth": "^6.0.0",
+    "amazon-cognito-identity-js": "^6.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
