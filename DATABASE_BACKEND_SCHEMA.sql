@@ -3,6 +3,76 @@
 -- For PostgreSQL / AWS RDS
 -- ====================================================================
 
+-- 0. MEASURING UNITS TABLE (Master Data)
+CREATE TABLE measuring_units (
+    id SERIAL PRIMARY KEY,
+    unit_name VARCHAR(50) NOT NULL UNIQUE,
+    unit_symbol VARCHAR(10) NOT NULL UNIQUE,
+    description TEXT,
+    conversion_factor DECIMAL(10,3), -- for unit conversion
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 0.1 TAX RATES TABLE (Master Data)
+CREATE TABLE tax_rates (
+    id SERIAL PRIMARY KEY,
+    tax_name VARCHAR(100) NOT NULL,
+    tax_percentage DECIMAL(5,2) NOT NULL,
+    tax_type VARCHAR(50), -- 'GST', 'VAT', 'SGST', 'CGST', 'IGST', etc.
+    description TEXT,
+    applicable_from DATE,
+    applicable_to DATE,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_tax_percentage CHECK (tax_percentage >= 0 AND tax_percentage <= 100)
+);
+
+-- 0.2 PRODUCT CODES TABLE (Master Data - for different code types)
+CREATE TABLE product_codes (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    code_type VARCHAR(50), -- 'BARCODE', 'QR_CODE', 'INTERNAL_CODE', 'HSN', etc.
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 0.3 SHORT CODES TABLE (Master Data - for quick reference codes)
+CREATE TABLE short_codes (
+    id SERIAL PRIMARY KEY,
+    short_code VARCHAR(20) NOT NULL UNIQUE,
+    full_name VARCHAR(255) NOT NULL,
+    code_category VARCHAR(50), -- 'PRODUCT', 'CATEGORY', 'CUSTOMER_TYPE', etc.
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 0.4 OFFER RATES TABLE (Master Data)
+CREATE TABLE offer_rates (
+    id SERIAL PRIMARY KEY,
+    offer_name VARCHAR(255) NOT NULL,
+    offer_type VARCHAR(50), -- 'PERCENTAGE', 'FLAT_AMOUNT', 'BUY_X_GET_Y'
+    discount_value DECIMAL(10,2) NOT NULL,
+    applicable_from DATE NOT NULL,
+    applicable_to DATE NOT NULL,
+    min_purchase_amount DECIMAL(10,2),
+    max_discount_amount DECIMAL(10,2),
+    is_active BOOLEAN DEFAULT true,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_valid_dates CHECK (applicable_from < applicable_to)
+);
+
+CREATE INDEX idx_offer_rates_active ON offer_rates(is_active);
+CREATE INDEX idx_offer_rates_dates ON offer_rates(applicable_from, applicable_to);
+
 -- 1. CATEGORIES TABLE
 CREATE TABLE categories (
     id SERIAL PRIMARY KEY,
@@ -14,18 +84,23 @@ CREATE TABLE categories (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. PRODUCTS TABLE
+-- 2. PRODUCTS TABLE (Updated to reference master tables)
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     sku VARCHAR(50) NOT NULL UNIQUE,
+    product_code_id INTEGER REFERENCES product_codes(id),
+    short_code_id INTEGER REFERENCES short_codes(id),
     category_id INTEGER NOT NULL REFERENCES categories(id),
     description TEXT,
+    measuring_unit_id INTEGER REFERENCES measuring_units(id),
     cost_price DECIMAL(10,2) NOT NULL,
     mrp DECIMAL(10,2) NOT NULL,
     selling_price DECIMAL(10,2),
+    tax_rate_id INTEGER REFERENCES tax_rates(id),
     barcode VARCHAR(50),
     image_url VARCHAR(255),
+    default_offer_rate_id INTEGER REFERENCES offer_rates(id),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -34,6 +109,10 @@ CREATE TABLE products (
 
 CREATE INDEX idx_products_category ON products(category_id);
 CREATE INDEX idx_products_sku ON products(sku);
+CREATE INDEX idx_products_product_code ON products(product_code_id);
+CREATE INDEX idx_products_short_code ON products(short_code_id);
+CREATE INDEX idx_products_measuring_unit ON products(measuring_unit_id);
+CREATE INDEX idx_products_tax_rate ON products(tax_rate_id);
 
 -- 3. INVENTORY TABLE (Current Stock)
 CREATE TABLE inventory (
@@ -114,15 +193,17 @@ CREATE TABLE suppliers (
 CREATE INDEX idx_suppliers_phone ON suppliers(phone);
 CREATE INDEX idx_suppliers_email ON suppliers(email);
 
--- 7. SALES/BILLS TABLE
+-- 7. SALES/BILLS TABLE (Updated)
 CREATE TABLE sales (
     id SERIAL PRIMARY KEY,
     bill_number VARCHAR(50) NOT NULL UNIQUE,
     customer_id INTEGER NOT NULL REFERENCES customers(id),
     created_by VARCHAR(100) NOT NULL,
     subtotal DECIMAL(12,2) NOT NULL,
+    tax_rate_id INTEGER REFERENCES tax_rates(id),
     gst_rate DECIMAL(5,2) DEFAULT 18.00,
     gst_amount DECIMAL(12,2) DEFAULT 0,
+    offer_rate_id INTEGER REFERENCES offer_rates(id),
     discount_type VARCHAR(20), -- 'AMOUNT' or 'PERCENTAGE'
     discount_value DECIMAL(10,2) DEFAULT 0,
     total_amount DECIMAL(12,2) NOT NULL,
@@ -139,6 +220,8 @@ CREATE INDEX idx_sales_customer ON sales(customer_id);
 CREATE INDEX idx_sales_bill_number ON sales(bill_number);
 CREATE INDEX idx_sales_bill_date ON sales(bill_date);
 CREATE INDEX idx_sales_status ON sales(status);
+CREATE INDEX idx_sales_tax_rate ON sales(tax_rate_id);
+CREATE INDEX idx_sales_offer_rate ON sales(offer_rate_id);
 
 -- 8. SALE ITEMS TABLE
 CREATE TABLE sale_items (
@@ -420,6 +503,49 @@ EXECUTE FUNCTION create_stock_movement_on_sale();
 -- SAMPLE DATA (OPTIONAL - Comment out for production)
 -- ====================================================================
 
+-- Sample Measuring Units
+INSERT INTO measuring_units (unit_name, unit_symbol, description, conversion_factor) VALUES
+('Kilogram', 'kg', 'Weight measurement - kilogram', 1.0),
+('Gram', 'g', 'Weight measurement - gram', 0.001),
+('Liter', 'L', 'Volume measurement - liter', 1.0),
+('Milliliter', 'ml', 'Volume measurement - milliliter', 0.001),
+('Piece', 'pc', 'Unit count - individual piece', 1.0),
+('Box', 'box', 'Unit count - box container', 1.0),
+('Dozen', 'dz', 'Unit count - twelve pieces', 12.0);
+
+-- Sample Tax Rates
+INSERT INTO tax_rates (tax_name, tax_percentage, tax_type, description, is_active) VALUES
+('Standard GST', 18.00, 'GST', 'Standard goods and services tax rate', true),
+('Reduced GST', 12.00, 'GST', 'Reduced rate for specific items', true),
+('Low GST', 5.00, 'GST', 'Low rate for essential items', true),
+('Zero Tax', 0.00, 'GST', 'Tax free items', true),
+('SGST', 9.00, 'SGST', 'State Goods and Services Tax', true),
+('CGST', 9.00, 'CGST', 'Central Goods and Services Tax', true);
+
+-- Sample Product Codes
+INSERT INTO product_codes (code, code_type, description, is_active) VALUES
+('8901200012345', 'BARCODE', 'EAN/UPC Barcode', true),
+('PROD-001', 'HSN', 'Harmonized System of Nomenclature Code', true),
+('INTERNAL-SKU-042', 'INTERNAL_CODE', 'Internal Product Code', true),
+('QR-2024-001', 'QR_CODE', 'QR Code for product', true);
+
+-- Sample Short Codes
+INSERT INTO short_codes (short_code, full_name, code_category, description, is_active) VALUES
+('ELC', 'Electronics', 'CATEGORY', 'Electronics category shortcode', true),
+('GRO', 'Grocery', 'CATEGORY', 'Grocery category shortcode', true),
+('BEU', 'Beauty', 'CATEGORY', 'Beauty and personal care shortcode', true),
+('RET', 'Retail', 'CUSTOMER_TYPE', 'Retail customer type', true),
+('WHL', 'Wholesale', 'CUSTOMER_TYPE', 'Wholesale customer type', true),
+('NEW', 'New Product', 'PRODUCT_STATUS', 'Newly added product', true);
+
+-- Sample Offer Rates
+INSERT INTO offer_rates (offer_name, offer_type, discount_value, applicable_from, applicable_to, is_active) VALUES
+('Summer Sale 10%', 'PERCENTAGE', 10.00, '2026-03-01', '2026-05-31', true),
+('Flat 50 Discount', 'FLAT_AMOUNT', 50.00, '2026-02-28', '2026-03-15', true),
+('Spring Promotion 15%', 'PERCENTAGE', 15.00, '2026-03-20', '2026-04-30', true),
+('Clearance Sale 25%', 'PERCENTAGE', 25.00, '2026-02-01', '2026-03-31', true),
+('Buy More Save More', 'PERCENTAGE', 5.00, '2026-01-01', '2026-12-31', true);
+
 INSERT INTO categories (name, description) VALUES
 ('Electronics', 'Electronic items and gadgets'),
 ('Grocery', 'Food and grocery items'),
@@ -427,10 +553,10 @@ INSERT INTO categories (name, description) VALUES
 ('Clothing', 'Apparel and fashion'),
 ('Books', 'Books and educational materials');
 
-INSERT INTO products (name, sku, category_id, cost_price, mrp, selling_price) VALUES
-('Product A', 'SKU-001', 1, 500, 899, 799),
-('Product B', 'SKU-002', 2, 150, 299, 249),
-('Product C', 'SKU-003', 3, 250, 599, 499);
+INSERT INTO products (name, sku, category_id, cost_price, mrp, selling_price, measuring_unit_id, tax_rate_id) VALUES
+('Product A', 'SKU-001', 1, 500, 899, 799, 5, 1),
+('Product B', 'SKU-002', 2, 150, 299, 249, 1, 2),
+('Product C', 'SKU-003', 3, 250, 599, 499, 5, 1);
 
 INSERT INTO inventory (product_id, current_stock, reorder_level) VALUES
 (1, 45, 10),
@@ -470,14 +596,22 @@ INSERT INTO suppliers (name, contact_person, phone, email, city, state) VALUES
 -- CONSTRAINTS AND INDEXES SUMMARY
 -- ====================================================================
 /*
-CREATED TABLES: 15
-CREATED INDEXES: 30+
+MASTER DATA TABLES: 5
+- measuring_units (unit of measurement reference)
+- tax_rates (tax configuration reference)
+- product_codes (product code reference)
+- short_codes (quick reference codes)
+- offer_rates (discount/promotion rates)
+
+CREATED TABLES: 18 (5 Master + 13 Transaction/Reference tables)
+CREATED INDEXES: 35+
 TRIGGERS: 4
 VIEWS: 3
 
 KEY FEATURES:
+✅ Master data management for units, taxes, codes, and offers
 ✅ Complete inventory management
-✅ Sales & billing system
+✅ Sales & billing system with tax and offer integration
 ✅ Customer tracking with credit limits
 ✅ Supplier management with payables
 ✅ Stock movement audit trail
@@ -487,10 +621,12 @@ KEY FEATURES:
 ✅ Automatic updates via triggers
 ✅ Fast queries via indexes and views
 ✅ Full audit trail via stock_movements & activity_log
-✅ GST calculation support
+✅ GST calculation support with configurable tax rates
 ✅ Return & refund support
 ✅ Credit management for customers
 ✅ Multiple payment methods support
+✅ Flexible discount/offer system
+✅ Product unit conversion support
 */
 
 -- ====================================================================
