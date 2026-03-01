@@ -54,8 +54,9 @@ export interface CartItem {
 export interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => boolean;
-  logout: () => void;
+  // authentication methods are async because Cognito operations return promises
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
   hasPermission: (role: string) => boolean;
 }
 

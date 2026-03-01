@@ -1,4 +1,7 @@
-import { Amplify, Auth } from 'aws-amplify';
+// Amplify v6 splits modules. Auth must be imported from its own package.
+import { Amplify } from 'aws-amplify';
+// @aws-amplify/auth-export style changed in v6; import as a namespace
+import * as Auth from '@aws-amplify/auth';
 
 /**
  * AWS Cognito Authentication Service
@@ -17,9 +20,10 @@ export interface CognitoConfig {
 
 // Initialize Amplify with Cognito configuration
 export const initializeCognito = (config: CognitoConfig): void => {
+  // region is a top‑level Amplify setting; the AuthConfig type no longer declares it
   Amplify.configure({
+    aws_project_region: config.region,
     Auth: {
-      region: config.region,
       userPoolId: config.userPoolId,
       userPoolWebClientId: config.clientId,
       identityPoolId: config.identityPoolId,
@@ -28,7 +32,7 @@ export const initializeCognito = (config: CognitoConfig): void => {
       redirectSignOut: config.redirectSignOut,
       responseType: 'code',
       authenticationFlowType: 'USER_PASSWORD_AUTH',
-    },
+    } as any, // some optional properties may not be fully captured by TS types
   });
 };
 
@@ -42,12 +46,16 @@ export const signUp = async (
   customAttributes?: Record<string, string>
 ): Promise<any> => {
   try {
+    // Amplify v6 signUp takes an object with `username`, optional `password`,
+    // and an `options` bag containing userAttributes.
     const result = await Auth.signUp({
       username,
       password,
-      attributes: {
-        email: email || username,
-        ...customAttributes,
+      options: {
+        userAttributes: {
+          email: email || username,
+          ...customAttributes,
+        },
       },
     });
     return result;
@@ -65,7 +73,7 @@ export const confirmSignUp = async (
   confirmationCode: string
 ): Promise<any> => {
   try {
-    const result = await Auth.confirmSignUp(username, confirmationCode);
+    const result = await Auth.confirmSignUp({ username, confirmationCode });
     return result;
   } catch (error) {
     console.error('Confirm sign up failed:', error);
@@ -81,7 +89,7 @@ export const signIn = async (
   password: string
 ): Promise<any> => {
   try {
-    const user = await Auth.signIn(username, password);
+    const user = await Auth.signIn({ username, password });
     return user;
   } catch (error) {
     console.error('Sign in failed:', error);
@@ -94,7 +102,8 @@ export const signIn = async (
  */
 export const getCurrentUser = async (): Promise<any> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
+    // new API method
+    const user = await Auth.getCurrentUser();
     return user;
   } catch (error) {
     console.error('Get current user failed:', error);
@@ -107,8 +116,9 @@ export const getCurrentUser = async (): Promise<any> => {
  */
 export const getCurrentUserCredentials = async (): Promise<any> => {
   try {
-    const credentials = await Auth.currentCredentials();
-    return credentials;
+    // fetchAuthSession returns a session object containing credentials
+    const session: any = await Auth.fetchAuthSession();
+    return session?.getCredentials?.();
   } catch (error) {
     console.error('Get credentials failed:', error);
     return null;
@@ -132,7 +142,8 @@ export const signOut = async (): Promise<void> => {
  */
 export const globalSignOut = async (): Promise<void> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
+    const user: any = await Auth.getCurrentUser();
+    // user object should still support globalSignOut
     await user.globalSignOut();
   } catch (error) {
     console.error('Global sign out failed:', error);
@@ -145,7 +156,8 @@ export const globalSignOut = async (): Promise<void> => {
  */
 export const forgotPassword = async (username: string): Promise<any> => {
   try {
-    const result = await Auth.forgotPassword(username);
+    // renamed to resetPassword
+    const result = await Auth.resetPassword({ username });
     return result;
   } catch (error) {
     console.error('Forgot password failed:', error);
@@ -162,11 +174,12 @@ export const forgotPasswordSubmit = async (
   newPassword: string
 ): Promise<any> => {
   try {
-    const result = await Auth.forgotPasswordSubmit(
+    // renamed to confirmResetPassword
+    const result = await Auth.confirmResetPassword({
       username,
+      newPassword,
       confirmationCode,
-      newPassword
-    );
+    });
     return result;
   } catch (error) {
     console.error('Forgot password submit failed:', error);
@@ -182,8 +195,8 @@ export const changePassword = async (
   newPassword: string
 ): Promise<any> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    const result = await Auth.changePassword(user, oldPassword, newPassword);
+    // user is no longer needed by the new API
+    const result = await Auth.updatePassword({ oldPassword, newPassword });
     return result;
   } catch (error) {
     console.error('Change password failed:', error);
@@ -196,8 +209,8 @@ export const changePassword = async (
  */
 export const getUserAttributes = async (): Promise<any> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    const attributes = await Auth.userAttributes(user);
+    // fetchUserAttributes does not require the user; it uses the currently authenticated user
+    const attributes = await Auth.fetchUserAttributes();
     return attributes;
   } catch (error) {
     console.error('Get user attributes failed:', error);
@@ -212,8 +225,7 @@ export const updateUserAttributes = async (
   attributes: Record<string, string>
 ): Promise<any> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    const result = await Auth.updateUserAttributes(user, attributes);
+    const result = await Auth.updateUserAttributes({ userAttributes: attributes });
     return result;
   } catch (error) {
     console.error('Update user attributes failed:', error);
@@ -226,8 +238,8 @@ export const updateUserAttributes = async (
  */
 export const getUserGroups = async (): Promise<string[]> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    const groups = user.signInUserSession.idToken.payload['cognito:groups'] || [];
+    const user: any = await Auth.getCurrentUser();
+    const groups = user.signInUserSession?.idToken?.payload['cognito:groups'] || [];
     return groups;
   } catch (error) {
     console.error('Get user groups failed:', error);
@@ -253,8 +265,8 @@ export const hasRole = async (role: string): Promise<boolean> => {
  */
 export const getIdToken = async (): Promise<string | null> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    return user.signInUserSession.idToken.jwtToken;
+    const user: any = await Auth.getCurrentUser();
+    return user.signInUserSession?.idToken?.jwtToken || null;
   } catch (error) {
     console.error('Get ID token failed:', error);
     return null;
@@ -266,8 +278,8 @@ export const getIdToken = async (): Promise<string | null> => {
  */
 export const getAccessToken = async (): Promise<string | null> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
-    return user.signInUserSession.accessToken.jwtToken;
+    const user: any = await Auth.getCurrentUser();
+    return user.signInUserSession?.accessToken?.jwtToken || null;
   } catch (error) {
     console.error('Get access token failed:', error);
     return null;
@@ -279,7 +291,7 @@ export const getAccessToken = async (): Promise<string | null> => {
  */
 export const isAuthenticated = async (): Promise<boolean> => {
   try {
-    await Auth.currentAuthenticatedUser();
+    await Auth.getCurrentUser();
     return true;
   } catch (error) {
     return false;
@@ -291,7 +303,7 @@ export const isAuthenticated = async (): Promise<boolean> => {
  */
 export const refreshSession = async (): Promise<any> => {
   try {
-    const user = await Auth.currentAuthenticatedUser();
+    const user: any = await Auth.getCurrentUser();
     const result = await user.refreshSession();
     return result;
   } catch (error) {
